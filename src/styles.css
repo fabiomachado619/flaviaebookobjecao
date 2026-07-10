@@ -186,19 +186,28 @@
     display: none;
   }
 
-  #delayed-sales-content.delayed-sales-content--visible {
-    display: block;
-    animation: delayed-content-reveal 0.65s ease-out both;
-  }
-
+  #delayed-sales-content.delayed-sales-content--visible,
   #delayed-sales-content.delayed-sales-content--visible-immediate {
     display: block;
+    visibility: visible;
+    opacity: 1;
+  }
+
+  #delayed-sales-content.delayed-sales-content--visible {
+    animation: delayed-content-reveal 0.55s ease-out forwards;
+  }
+
+  /* Evita seções em branco no mobile após liberação (content-visibility) */
+  #delayed-sales-content.delayed-sales-content--visible .section-deferred,
+  #delayed-sales-content.delayed-sales-content--visible-immediate .section-deferred {
+    content-visibility: visible;
+    contain-intrinsic-size: auto;
   }
 
   @keyframes delayed-content-reveal {
     from {
-      opacity: 0;
-      transform: translateY(18px);
+      opacity: 0.01;
+      transform: translateY(12px);
     }
     to {
       opacity: 1;
@@ -206,9 +215,28 @@
     }
   }
 
+  @media (max-width: 768px) {
+    #delayed-sales-content.delayed-sales-content--visible {
+      animation: delayed-content-reveal-mobile 0.4s ease-out forwards;
+    }
+  }
+
+  @keyframes delayed-content-reveal-mobile {
+    from {
+      opacity: 0.01;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     #delayed-sales-content.delayed-sales-content--visible {
       animation: none;
+      opacity: 1;
+      transform: none;
     }
   }
 }

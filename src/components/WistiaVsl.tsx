@@ -47,6 +47,10 @@ function loadWistiaScript(): Promise<void> {
   return wistiaScriptPromise;
 }
 
+function isPlayingState(state: string): boolean {
+  return state === "playing" || state === "play" || state === "buffering";
+}
+
 interface WistiaVslProps {
   onReachThreshold: () => void;
   /** Quando false, não dispara liberação por tempo — pixel da VSL continua ativo. */
@@ -69,10 +73,22 @@ export function WistiaVsl({ onReachThreshold, trackThreshold = true }: WistiaVsl
     let thresholdReached = false;
     let playTracked = false;
     let revealPointTracked = false;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
     const milestonesFired = new Set<number>();
 
-    const checkProgress = (player: WistiaVideo) => {
-      if (player.state() !== "playing") return;
+    const tryRevealThreshold = (player: WistiaVideo) => {
+      if (
+        trackThresholdRef.current &&
+        !thresholdReached &&
+        player.time() >= REVEAL_AT_SECONDS
+      ) {
+        thresholdReached = true;
+        onReachThresholdRef.current();
+      }
+    };
+
+    const trackMilestonesWhilePlaying = (player: WistiaVideo) => {
+      if (!isPlayingState(player.state())) return;
 
       const currentTime = player.time();
       const duration = player.duration() || REVEAL_AT_SECONDS;
@@ -90,15 +106,26 @@ export function WistiaVsl({ onReachThreshold, trackThreshold = true }: WistiaVsl
         revealPointTracked = true;
         trackVslRevealPoint(currentTime);
       }
+    };
 
-      if (
-        trackThresholdRef.current &&
-        !thresholdReached &&
-        currentTime >= REVEAL_AT_SECONDS
-      ) {
-        thresholdReached = true;
-        onReachThresholdRef.current();
+    const checkProgress = (player: WistiaVideo) => {
+      trackMilestonesWhilePlaying(player);
+      tryRevealThreshold(player);
+    };
+
+    const stopPolling = () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
       }
+    };
+
+    const startPolling = () => {
+      stopPolling();
+      pollInterval = setInterval(() => {
+        if (!video) return;
+        checkProgress(video);
+      }, 1000);
     };
 
     const onPlay = () => {
@@ -110,11 +137,24 @@ export function WistiaVsl({ onReachThreshold, trackThreshold = true }: WistiaVsl
       }
 
       checkProgress(video);
+      startPolling();
+    };
+
+    const onPause = () => {
+      stopPolling();
+      if (!video) return;
+      tryRevealThreshold(video);
     };
 
     const onSecondChange = () => {
       if (!video) return;
       checkProgress(video);
+    };
+
+    const onEnd = () => {
+      stopPolling();
+      if (!video) return;
+      tryRevealThreshold(video);
     };
 
     const initPlayer = () => {
@@ -125,7 +165,9 @@ export function WistiaVsl({ onReachThreshold, trackThreshold = true }: WistiaVsl
           if (!mounted) return;
           video = player;
           player.bind("play", onPlay);
+          player.bind("pause", onPause);
           player.bind("secondchange", onSecondChange);
+          player.bind("end", onEnd);
         },
       });
     };
@@ -137,9 +179,12 @@ export function WistiaVsl({ onReachThreshold, trackThreshold = true }: WistiaVsl
 
     return () => {
       mounted = false;
+      stopPolling();
       if (video) {
         video.unbind("play", onPlay);
+        video.unbind("pause", onPause);
         video.unbind("secondchange", onSecondChange);
+        video.unbind("end", onEnd);
       }
     };
   }, []);

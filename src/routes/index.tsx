@@ -3,6 +3,7 @@ import { Check, Flame, Brain, Target, Zap, MessageSquare, Gift, ChevronDown, Sta
 import { useState, useEffect, useCallback, useRef } from "react";
 import { WistiaVsl } from "@/components/WistiaVsl";
 import { hasValidRevealAccess, saveRevealAccess } from "@/lib/vsl-reveal";
+import { ENABLE_EXIT_POPUP, ENABLE_WHATSAPP_FLOAT } from "@/lib/feature-flags";
 import flaviaImg from "@/assets/flavia.webp";
 import logoObjecaoZero from "@/assets/logo-objecao-zero.webp";
 import frustradoImg from "@/assets/frustrado.webp";
@@ -575,6 +576,13 @@ function SalesPage() {
     }
     saveRevealAccess();
     setContentRevealed(true);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = document.getElementById("delayed-sales-content");
+        if (el) void el.offsetHeight;
+      });
+    });
   }, []);
 
   useEffect(() => {
@@ -600,25 +608,34 @@ function SalesPage() {
     if (!contentRevealed) return;
 
     const seen = new Set<string>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const config = SECTION_PIXEL_EVENTS.find((item) => item.selector === `#${entry.target.id}`);
-          if (!config || seen.has(config.selector)) continue;
-          seen.add(config.selector);
-          trackMetaEvent(config.event, config.params);
-        }
-      },
-      { threshold: 0.35 },
-    );
+    let observer: IntersectionObserver | null = null;
 
-    for (const { selector } of SECTION_PIXEL_EVENTS) {
-      const element = document.querySelector(selector);
-      if (element) observer.observe(element);
-    }
+    const setupObserver = () => {
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const config = SECTION_PIXEL_EVENTS.find((item) => item.selector === `#${entry.target.id}`);
+            if (!config || seen.has(config.selector)) continue;
+            seen.add(config.selector);
+            trackMetaEvent(config.event, config.params);
+          }
+        },
+        { threshold: 0.35 },
+      );
 
-    return () => observer.disconnect();
+      for (const { selector } of SECTION_PIXEL_EVENTS) {
+        const element = document.querySelector(selector);
+        if (element) observer.observe(element);
+      }
+    };
+
+    const timer = window.setTimeout(setupObserver, 100);
+
+    return () => {
+      window.clearTimeout(timer);
+      observer?.disconnect();
+    };
   }, [contentRevealed]);
 
   const delayedContentClass = contentRevealed
@@ -645,12 +662,8 @@ function SalesPage() {
         <Faq />
         <Footer />
       </div>
-      {contentRevealed && (
-        <>
-          <ExitIntentPopup />
-          <WhatsAppFloat />
-        </>
-      )}
+      {contentRevealed && ENABLE_EXIT_POPUP && <ExitIntentPopup />}
+      {contentRevealed && ENABLE_WHATSAPP_FLOAT && <WhatsAppFloat />}
     </main>
   );
 }
